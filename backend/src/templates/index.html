@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Signal Processor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <h1>Upload File and Process Signal</h1>
+
+    <form id="uploadForm">
+        <label for="sampleRate">Sample Rate:</label>
+        <input type="number" id="sampleRate" name="sample_rate" step="any" value="1000" required><br><br>
+
+        <label for="file">Choose a file:</label>
+        <input type="file" id="file" name="file" accept=".csv,.txt,.xls,.xlsx,.dat" required><br><br>
+
+        <button type="submit">Process Signal</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const formData = new FormData(this);
+
+            fetch('/api/process-signal', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // 假设 data 包含一个 plot_url 字段指向生成的图表
+                if (data.plot_url) {
+                    window.location.href = `/plot?plot_url=${encodeURIComponent(data.plot_url)}`;
+                } else {
+                    console.error('No plot URL found in the response.');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>

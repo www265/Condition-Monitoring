@@ -1,116 +1,57 @@
 <template>
   <div id="app" class="container">
-    <!-- 左面板 -->
-    <div class="panel left-panel">
-      <div class="upper-section">
-        <h2>上传文件并绘制数据</h2>
-        <FileUpload @file-uploaded="handleFileUploaded" />
-      </div>
-      <div class="lower-section" v-if="fileChartData">
-        <h3>上传文件后的XY数据图</h3>
-        <LineChart :chartData="fileChartData" />
-      </div>
-      <div v-else-if="fileError" class="error-message">
-        <p>{{ fileError }}</p>
-      </div>
-      <div v-else class="loading">正在加载...</div>
+    <!-- 页签导航 -->
+    <div class="tabs">
+      <router-link to="/" exact active-class="active">主页</router-link>
+      <router-link to="/upload" active-class="active">文件上传</router-link>
+      <router-link to="/generator" active-class="active">信号发生器</router-link>
+      <router-link to="/analysis" active-class="active">信号分析</router-link>
     </div>
 
-    <!-- 右面板 -->
-    <div class="panel right-panel">
-      <div class="upper-section">
-        <h2>信号发生器</h2>
-        <SignalGenerator @signal-generated="handleSignalGenerated" />
-      </div>
-      <div class="lower-section" v-if="signalChartData">
-        <h3>信号发生器获取的数据图</h3>
-        <LineChart :chartData="signalChartData" />
-      </div>
-      <div v-else-if="signalError" class="error-message">
-        <p>{{ signalError }}</p>
-      </div>
-      <div v-else class="loading">正在加载...</div>
-    </div>
+    <!-- 主要内容区域 -->
+   <router-view v-slot="{ Component, route }">
+      <keep-alive v-if="route.meta.keepAlive">
+        <component :is="Component" />
+      </keep-alive>
+      <component v-else :is="Component" />
+    </router-view>
+
+
   </div>
 </template>
 
 <script>
-import FileUpload from './components/FileUpload.vue';
-import SignalGenerator from './components/SignalGenerator.vue';
-import LineChart from './components/LineChart.vue';
-
 export default {
   name: 'App',
-  components: {
-    FileUpload,
-    SignalGenerator,
-    LineChart
-  },
-  data() {
-    return {
-      fileChartData: null,
-      signalChartData: null,
-      fileError: null,
-      signalError: null,
-    };
-  },
-  methods: {
-    handleFileUploaded(data, error) {
-      if (error) {
-        this.fileError = error;
-        this.fileChartData = null;
-      } else {
-        this.fileError = null;
-        this.fileChartData = data;
-      }
-    },
-    handleSignalGenerated(data, error) {
-      if (error) {
-        this.signalError = error;
-        this.signalChartData = null;
-      } else {
-        this.signalError = null;
-        this.signalChartData = data;
-      }
-    }
-  }
 };
 </script>
 
 <style scoped>
 .container {
   display: flex;
-}
-
-.panel {
-  width: 50%;
-  padding: 20px;
-  display: flex;
   flex-direction: column;
-  justify-content: space-between;
 }
 
-.left-panel {
+.tabs {
+  display: flex;
   background-color: #f4f4f4;
-}
-
-.right-panel {
-  background-color: #e9e9e9;
-}
-
-.upper-section, .lower-section {
   padding: 10px;
 }
 
-.lower-section {
-  border-top: 1px solid #ccc;
+.tabs a {
+  margin: 5px;
+  padding: 10px 20px;
+  text-decoration: none;
+  color: #333;
+  border-radius: 4px;
 }
 
-.loading, .error-message {
-  text-align: center;
-  padding: 20px;
+.tabs a.active {
+  background-color: #e9e9e9;
+  font-weight: bold;
 }
-.error-message p {
-  color: red;
+
+.content {
+  padding: 20px;
 }
 </style>

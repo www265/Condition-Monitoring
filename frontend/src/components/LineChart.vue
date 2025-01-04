@@ -67,7 +67,7 @@ function renderChart(data) {
           x: {
             title: {
               display: true,
-              text: 'Index'
+              text: 'Times'
             },
             ticks: {
               callback: function(value, index) {
@@ -82,7 +82,12 @@ function renderChart(data) {
             title: {
               display: true,
               text: 'Value'
+            },
+          ticks: {
+            callback: function(value, index, ticks) {
+            return parseFloat(value).toFixed(3);
             }
+          }
           }
         }
       }

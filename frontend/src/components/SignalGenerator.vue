@@ -16,15 +16,15 @@
 
       <!-- 幅度设置 -->
       <label for="amplitude">Amplitude (V):</label>
-      <input type="number" id="amplitude" v-model="amplitude" required />
+      <input type="number" id="amplitude" v-model="amplitude" step="0.01"required />
 
       <!-- 相位设置 -->
       <label for="phase">Phase (degrees):</label>
       <input type="number" id="phase" v-model="phase" required />
 
       <!-- 采样率设置 -->
-      <label for="SampleRate">采样率 (Hz):</label>
-      <input id="SampleRate" v-model.number="SampleRate" type="number" min="1" placeholder="512000">
+      <label for="sampleRate">SampleRate (Hz):</label>
+      <input type="number" id="sampleRate" v-model="sampleRate" required min="1" placeholder="512000">
 
       <!-- 占空比仅对方波有效 -->
       <div v-if="waveformType === 'square'">
@@ -34,7 +34,7 @@
 
       <!-- 持续时间 -->
       <label for="duration">Duration (seconds):</label>
-      <input type="number" id="duration" v-model="duration" required />
+      <input type="number" id="duration" v-model="duration" step="0.01" required />
 
       <button type="submit">Generate Signal</button>
     </form>
@@ -57,7 +57,7 @@ export default {
       phase: 0, // 默认相位为0度
       dutyCycle: 0.5, // 方波默认占空比为50%
       duration: 1, // 默认持续时间为1秒
-      SampleRate: 512000, // 默认采样率为512000 Hz
+      sampleRate: 1000, // 默认采样率为512000 Hz
       signalData: null,
       message: ''
     };
@@ -65,33 +65,35 @@ export default {
   methods: {
     async generateSignal() {
       try {
+        // 保存原始值
+        const originalFrequency = parseFloat(this.frequency).toFixed(2);
+        const originalSampleRate = parseInt(this.sampleRate, 10);
         // 验证采样率是否有效
-        if (!this.SampleRate || this.SampleRate <= 0) {
+        if (!this.sampleRate || this.sampleRate <= 0) {
           console.error('Invalid Sample rate provided. Using default value.');
-          this.SampleRate = 512000; // 使用默认采样率
+          this.sampleRate = 1000; // 使用默认采样率
         }
 
         const response = await axios.post('http://127.0.0.1:5000/api/generate-signal', {
-          type: this.waveformType,
-          frequency: this.frequency,
-          amplitude: this.amplitude,
-          phase: this.phase * Math.PI / 180, // 将度数转换为弧度
-          duty_cycle: this.dutyCycle,
-          duration: this.duration,
-          SampleRate: this.SampleRate // 使用统一的小写命名
-        }, {
+        type: this.waveformType,
+        frequency: parseFloat(this.frequency),
+        amplitude: parseFloat(this.amplitude),
+        phase: this.phase * Math.PI / 180, // 将度数转换为弧度
+        duty_cycle: this.dutyCycle,
+        duration: parseFloat(this.duration),
+        sampleRate: parseInt(this.sampleRate, 10)
+      }, {
           headers: {
             'Content-Type': 'application/json'
           }
         });
 
-        const { signal } = response.data;
+        const { signal, type } = response.data;
 
         // 过滤掉 NaN 值
-        const cleanedSignal = signal.filter(dataPoint => !isNaN(dataPoint));
 
         // 打印调试信息
-        console.log(`Sample Rate: ${this.SampleRate}`);
+        console.log(`Sample Rate: ${this.sampleRate}`);
         console.log('Generating signal with parameters:', {
           type: this.waveformType,
           frequency: this.frequency,
@@ -99,14 +101,14 @@ export default {
           phase: this.phase,
           duty_cycle: this.dutyCycle,
           duration: this.duration,
-          SampleRate: this.SampleRate // 使用统一的小写命名
+          sampleRate: this.sampleRate // 使用统一的小写命名
         });
 
         // 确保 xData 和 cleanedSignal 长度一致
-        const xData = Array.from({ length: cleanedSignal.length }, (_, i) => {
-          const label = i / this.SampleRate;
+        const xData = Array.from({ length: signal.length }, (_, i) => {
+          const label = i / this.sampleRate;
           if (isNaN(label)) {
-            console.error(`Generated NaN at index ${i}, SampleRate: ${this.SampleRate}`);
+            console.error(`Generated NaN at index ${i}, SampleRate: ${this.sampleRate}`);
           }
           return label;
         }).filter(label => !isNaN(label)); // 再次过滤掉任何可能产生的 NaN
@@ -115,7 +117,7 @@ export default {
         this.$emit('signal-generated', {
           labels: xData,
           datasets: [{
-            data: cleanedSignal,
+            data: signal,
             label: `${this.waveformType} Signal`,
             borderColor: 'rgba(75, 192, 192, 1)',
             fill: false
@@ -123,6 +125,9 @@ export default {
         });
 
         this.signalData = JSON.stringify(response.data, null, 2);
+        // 恢复原始值
+        this.frequency = originalFrequency;
+        this.sampleRate = originalSampleRate;
         this.message = `${this.waveformType} signal generated successfully!`;
       } catch (error) {
         this.message = 'There was an error generating the signal!';
