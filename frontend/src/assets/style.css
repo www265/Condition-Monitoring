@@ -1,0 +1,20 @@
+/* src/assets/style.css */
+body {
+  font-family: Arial, sans-serif;
+}
+
+.file-upload {
+  max-width: 600px;
+  margin: auto;
+}
+
+.preview {
+  margin-top: 20px;
+  white-space: pre-wrap; /* 确保文本换行 */
+}
+
+.plot img {
+  width: 100%;
+  height: auto;
+}
+
