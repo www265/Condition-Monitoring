@@ -1,0 +1,29 @@
+# 忽略Python虚拟环境
+venv/
+# 或者如果你使用的是不同的虚拟环境名称
+# .venv/
+# env/
+
+# 忽略Python编译后的文件
+*.pyc
+__pycache__/
+
+# 忽略IDE配置
+.idea/
+.vscode/
+
+# 忽略Node.js相关文件
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# 忽略构建输出
+/dist/
+/build/
+
+# 忽略操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 其他特定于项目的忽略规则...git add .gitignore
