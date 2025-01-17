@@ -6,11 +6,16 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 import './assets/style.css'; // 如果有全局样式文件
+import 'bootstrap/dist/css/bootstrap.css';
 
-// 创建 Vue 应用实例并挂载到 DOM
+// 创建 Vue 应用实例
 const app = createApp(App);
 
+// 使用路由（如果有的话）
 app.use(router);
-// app.use(store); // 如果你使用 Vuex 也需要这行
 
+// 如果你使用 Vuex 或其他插件，也需要在这里注册
+// app.use(store);
+
+// 挂载应用到 DOM
 app.mount('#app');

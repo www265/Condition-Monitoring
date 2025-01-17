@@ -6,6 +6,7 @@
       <router-link to="/upload">Go to File Upload</router-link> |
       <router-link to="/generator">Go to Signal Generator</router-link> |
       <router-link to="/analysis">Go to Signal Analysis</router-link>
+      <router-link to="/dimenreduct" active-class="active">Go to Dimension Reduction</router-link>
     </nav>
   </div>
 </template>

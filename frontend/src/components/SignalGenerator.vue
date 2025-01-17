@@ -1,175 +1,299 @@
 <template>
   <div class="signal-generator">
     <h2>Signal Generator</h2>
-    <form @submit.prevent="generateSignal">
-      <!-- 波形选择 -->
-      <label for="waveform">Waveform Type:</label>
-      <select id="waveform" v-model="waveformType">
-        <option value="sine">Sine Wave</option>
-        <option value="square">Square Wave</option>
-        <option value="triangle">Triangle Wave</option>
-      </select>
 
-      <!-- 频率设置 -->
-      <label for="frequency">Frequency (Hz):</label>
-      <input type="number" id="frequency" v-model="frequency" required />
-
-      <!-- 幅度设置 -->
-      <label for="amplitude">Amplitude (V):</label>
-      <input type="number" id="amplitude" v-model="amplitude" step="0.01"required />
-
-      <!-- 相位设置 -->
-      <label for="phase">Phase (degrees):</label>
-      <input type="number" id="phase" v-model="phase" required />
-
-      <!-- 采样率设置 -->
-      <label for="sampleRate">SampleRate (Hz):</label>
-      <input type="number" id="sampleRate" v-model="sampleRate" required min="1" placeholder="512000">
-
-      <!-- 占空比仅对方波有效 -->
-      <div v-if="waveformType === 'square'">
-        <label for="duty-cycle">Duty Cycle (0 to 1):</label>
-        <input type="number" id="duty-cycle" v-model="dutyCycle" step="0.01" min="0" max="1" required />
-      </div>
-
-      <!-- 持续时间 -->
-      <label for="duration">Duration (seconds):</label>
-      <input type="number" id="duration" v-model="duration" step="0.01" required />
-
-      <button type="submit">Generate Signal</button>
+    <!-- 表单 -->
+    <form @submit.prevent="generateSignal" class="signal-form-container">
+      <SignalForm
+        v-for="(signal, index) in signals"
+        :key="index"
+        :signal="signal"
+        :index="index + 1"
+        @input-change="updateSignal"
+      />
     </form>
+
+    <!-- 按钮 -->
+    <button type="button" @click="generateSignal" class="generate-button">Generate Signal</button>
 
     <!-- 提示信息 -->
     <p v-if="message">{{ message }}</p>
+
+    <!-- 图表区域 -->
+    <div v-if="chartData" class="plot responsive-plot">
+      <h4>Data Visualization:</h4>
+      <canvas ref="combinedSignalChart"></canvas>
+    </div>
   </div>
 </template>
 
 <script>
+import { reactive } from 'vue';
 import axios from 'axios';
+import { Chart, registerables } from 'chart.js';
+import zoomPlugin from 'chartjs-plugin-zoom';
+
+
+// 注册 Chart.js 的必要组件
+Chart.register(...registerables, zoomPlugin);
+
+// 子组件 SignalForm.vue (假设已经创建)
+import SignalForm from './SignalForm.vue';
 
 export default {
-  name: 'SignalGenerator', // 修正拼写错误
+  name: 'SignalGenerator',
+  components: {
+    SignalForm
+  },
+  setup() {
+    // 定义两个信号对象，使用 reactive 包装以确保响应性
+    const signals = reactive([
+      {
+        waveformType: 'sine',
+        frequency: 100,
+        amplitude: 1,
+        phase: 0,
+        dutyCycle: 0.5,
+        duration: 1,
+        sampleRate: 1000,
+      },
+      {
+        waveformType: 'sine',
+        frequency: 100,
+        amplitude: 1,
+        phase: 0,
+        dutyCycle: 0.5,
+        duration: 1,
+        sampleRate: 1000,
+      }
+    ]);
+
+    return { signals };
+  },
   data() {
     return {
-      waveformType: 'sine',
-      frequency: 1000, // 默认值为1kHz
-      amplitude: 1, // 默认幅度为1V
-      phase: 0, // 默认相位为0度
-      dutyCycle: 0.5, // 方波默认占空比为50%
-      duration: 1, // 默认持续时间为1秒
-      sampleRate: 1000, // 默认采样率为512000 Hz
-      signalData: null,
-      message: ''
+      message: '',
+      chartData: null,
+      chartInstance: null
     };
   },
   methods: {
+    updateSignal(updatedSignal, index) {
+      // 直接更新对应的信号对象
+      this.signals[index - 1] = updatedSignal;
+    },
     async generateSignal() {
       try {
-        // 保存原始值
-        const originalFrequency = parseFloat(this.frequency).toFixed(2);
-        const originalSampleRate = parseInt(this.sampleRate, 10);
-        // 验证采样率是否有效
-        if (!this.sampleRate || this.sampleRate <= 0) {
-          console.error('Invalid Sample rate provided. Using default value.');
-          this.sampleRate = 1000; // 使用默认采样率
+        // 确保两个信号的采样率相同
+        if (this.signals[0].sampleRate !== this.signals[1].sampleRate) {
+          this.message = 'Both signals must have the same sample rate.';
+          return;
         }
 
-        const response = await axios.post('http://127.0.0.1:5000/api/generate-signal', {
-        type: this.waveformType,
-        frequency: parseFloat(this.frequency),
-        amplitude: parseFloat(this.amplitude),
-        phase: this.phase * Math.PI / 180, // 将度数转换为弧度
-        duty_cycle: this.dutyCycle,
-        duration: parseFloat(this.duration),
-        sampleRate: parseInt(this.sampleRate, 10)
-      }, {
-          headers: {
-            'Content-Type': 'application/json'
+        const requests = this.signals.map(signal => {
+          const params = {
+            type: signal.waveformType,
+            frequency: signal.frequency,
+            amplitude: signal.amplitude,
+            phase: signal.phase * Math.PI / 180, // 将度数转换为弧度
+            duration: signal.duration,
+            sampleRate: parseInt(signal.sampleRate, 10),
+          };
+
+          if (signal.waveformType === 'square') {
+            params.duty_cycle = signal.dutyCycle;
           }
+
+          return axios.post('http://127.0.0.1:5000/api/generate-signal', params, {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
         });
 
-        const { signal, type } = response.data;
+        const responses = await Promise.all(requests);
+        const [response1, response2] = responses;
 
-        // 过滤掉 NaN 值
+        const { signal: signal1 } = response1.data;
+        const { signal: signal2 } = response2.data;
 
-        // 打印调试信息
-        console.log(`Sample Rate: ${this.sampleRate}`);
-        console.log('Generating signal with parameters:', {
-          type: this.waveformType,
-          frequency: this.frequency,
-          amplitude: this.amplitude,
-          phase: this.phase,
-          duty_cycle: this.dutyCycle,
-          duration: this.duration,
-          sampleRate: this.sampleRate // 使用统一的小写命名
-        });
+        // 计算叠加信号
+        const combinedSignal = signal1.map((value, index) => value + signal2[index]);
 
-        // 确保 xData 和 cleanedSignal 长度一致
-        const xData = Array.from({ length: signal.length }, (_, i) => {
-          const label = i / this.sampleRate;
-          if (isNaN(label)) {
-            console.error(`Generated NaN at index ${i}, SampleRate: ${this.sampleRate}`);
-          }
-          return label;
-        }).filter(label => !isNaN(label)); // 再次过滤掉任何可能产生的 NaN
+        // 生成 x 数据
+        const sampleRate = parseInt(this.signals[0].sampleRate, 10);
+        const xData = Array.from({ length: combinedSignal.length }, (_, i) => i / sampleRate).filter(label => !isNaN(label));
 
-        // 发送清理后的数据给父组件
-        this.$emit('signal-generated', {
+        // 准备图表数据
+        this.chartData = {
           labels: xData,
-          datasets: [{
-            data: signal,
-            label: `${this.waveformType} Signal`,
-            borderColor: 'rgba(75, 192, 192, 1)',
-            fill: false
-          }]
-        });
+          datasets: [
+            {
+              label: `${this.signals[0].waveformType} Signal`,
+              data: signal1,
+              borderColor: 'rgba(75, 192, 192, 1)',
+              fill: false
+            },
+            {
+              label: `${this.signals[1].waveformType} Signal`,
+              data: signal2,
+              borderColor: 'rgba(255, 99, 132, 1)',
+              fill: false
+            },
+            {
+              label: 'Combined Signal',
+              data: combinedSignal,
+              borderColor: 'rgba(54, 162, 235, 1)',
+              fill: false
+            }
+          ]
+        };
 
-        this.signalData = JSON.stringify(response.data, null, 2);
-        // 恢复原始值
-        this.frequency = originalFrequency;
-        this.sampleRate = originalSampleRate;
-        this.message = `${this.waveformType} signal generated successfully!`;
+        this.message = 'Signals generated successfully!';
+        this.$nextTick(() => {
+          this.drawChart();
+        });
       } catch (error) {
-        this.message = 'There was an error generating the signal!';
+        this.message = 'There was an error generating the signals!';
         console.error('Error:', error);
       }
+    },
+    drawChart() {
+    const canvas = this.$refs.combinedSignalChart;
+
+    // 确保 canvas 存在并且其父容器有明确的尺寸
+    if (!canvas || !canvas.parentElement) {
+      console.error('Canvas element not found or its parent container is not properly sized.');
+      return;
     }
+
+    // 使用 $nextTick 确保 DOM 已更新
+    this.$nextTick(() => {
+      const ctx = canvas.getContext('2d');
+
+      // 销毁之前的图表实例（如果存在）
+      if (this.chartInstance) {
+        this.chartInstance.destroy();
+      }
+
+      // 创建新的图表实例
+      this.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: this.chartData,
+        options: {
+          responsive: true,
+          //maintainAspectRatio: false, // 避免不必要的比例保持
+          plugins: {
+            legend: {
+              position: 'top',
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+            },
+            zoom: {
+              pan: {
+                enabled: true,
+                mode: 'x',
+                threshold: 5,
+                modifierKey: 'ctrl'
+              },
+              zoom: {
+                wheel: {
+                  enabled: true,
+                },
+                pinch: {
+                  enabled: true
+                },
+                drag: {
+                  enabled: true,
+                  mode: 'x',
+                },
+                mode: 'x',
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              position: 'bottom',
+              title: {
+                display: true,
+                text: 'Time (s)'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Amplitude (V)'
+              }
+            }
+          }
+        }
+      });
+      const resetZoomOnRightClick = (event) => {
+        if (event.button === 2) { // 检查是否为右键点击 (button: 2)
+          event.preventDefault(); // 阻止默认上下文菜单
+          this.chartInstance.resetZoom();
+        }
+      };
+
+      // 监听图表容器上的右键点击事件
+      canvas.addEventListener('contextmenu', resetZoomOnRightClick);
+
+      // 将事件监听器存储以便稍后移除
+      this.resetZoomListener = resetZoomOnRightClick;
+
+
+    });
+   }
+  },
+  beforeUnmount() {
+      if (this.chartInstance) {
+        // 移除事件监听器
+        if (this.resetZoomListener && this.$refs.combinedSignalChart) {
+        this.$refs.combinedSignalChart.removeEventListener('contextmenu', this.resetZoomListener);
+        }
+        // 销毁图表实例
+        this.chartInstance.destroy();
+        this.chartInstance = null;
+      }
   }
 };
 </script>
 
 <style scoped>
-/* 样式可以根据实际需求调整 */
 .signal-generator {
   text-align: center;
 }
 
-form {
-  display: inline-block;
-  text-align: left;
-  margin-top: 20px;
-}
-
-label {
-  display: block;
-  margin-bottom: 8px;
-}
-
-input, select {
+.signal-form-container {
+  display: flex;
+  justify-content: space-around;
   margin-bottom: 20px;
-  padding: 5px;
-  width: 100%;
 }
 
-button {
+.generate-button {
   padding: 10px 20px;
   background-color: #4CAF50;
   color: white;
   border: none;
   cursor: pointer;
+  margin-top: 20px;
 }
 
-button:hover {
+.generate-button:hover {
   background-color: #45a049;
+}
+
+.plot, .responsive-plot {
+  width: 100%;
+  height: auto;
+  position: relative;
+}
+
+.plot canvas {
+  width: 100%!important;
+  height: auto!important;
 }
 </style>

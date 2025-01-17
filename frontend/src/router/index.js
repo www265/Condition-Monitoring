@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/Home.vue'; // 使用相对路径
-import FileUploadPage from '../views/FileUploadPage.vue'; // 使用相对路径
-import SignalGeneratorPage from '../views/SignalGeneratorPage.vue'; // 使用相对路径
-import SignalAnalysisPage from '../views/SignalAnalysisPage.vue';
+import FileUpload from '../components/FileUpload.vue'; // 使用相对路径
+import SignalGenerator from '../components/SignalGenerator.vue'; // 使用相对路径
+import SignalAnalysis from '../components/SignalAnalysis.vue';
+import DimentionReduction from '../components/DimentionReduction.vue';
 
 const routes = [
   {
@@ -12,20 +13,26 @@ const routes = [
   },
   {
     path: '/upload',
-    name: 'FileUploadPage',
-    component: FileUploadPage,
+    name: 'FileUpload',
+    component: FileUpload,
     meta: { keepAlive: true }, // 添加这条属性以启用缓存
   },
   {
     path: '/generator',
-    name: 'SignalGeneratorPage',
-    component: SignalGeneratorPage,
+    name: 'SignalGenerator',
+    component: SignalGenerator,
     meta: { keepAlive: true }, // 添加这条属性以启用缓存
   },
   {
     path: '/analysis',
-    name: 'SignalAnalysisPage',
-    component: SignalAnalysisPage,
+    name: 'SignalAnalysis',
+    component: SignalAnalysis,
+    meta: { keepAlive: true }, // 添加这条属性以启用缓存
+  },
+  {
+    path: '/dimenreduct',
+    name: 'DimentionReduction',
+    component: DimentionReduction,
     meta: { keepAlive: true }, // 添加这条属性以启用缓存
   }
 ];

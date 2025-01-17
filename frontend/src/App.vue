@@ -6,6 +6,7 @@
       <router-link to="/upload" active-class="active">文件上传</router-link>
       <router-link to="/generator" active-class="active">信号发生器</router-link>
       <router-link to="/analysis" active-class="active">信号分析</router-link>
+      <router-link to="/dimenreduct" active-class="active">降维展示</router-link>
     </div>
 
     <!-- 主要内容区域 -->

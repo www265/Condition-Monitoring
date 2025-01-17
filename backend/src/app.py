@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template,url_for
+from flask import Flask, request, jsonify, send_from_directory, render_template, url_for
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import os
@@ -10,11 +10,12 @@ import openpyxl  # 用于读取 .xlsx 文件
 import xlrd  # 用于读取 .xls 文件
 from signals import generate_sine_wave, generate_square_wave, generate_triangle_wave
 from wavefftgse import SignalProcessor  # 导入 SignalProcessor 类
+from DimentionReduction import DimentionReduction
 import matplotlib.pyplot as plt
 import io
 import base64
+import json
 
-# app = Flask(__name__, static_folder='uploads', static_url_path='/uploads')
 app = Flask(__name__)
 CORS(app, resources={
     r"/api/*": {"origins": "http://localhost:8080"},
@@ -25,6 +26,7 @@ CORS(app, resources={
 UPLOAD_FOLDER = './uploads'
 ALLOWED_EXTENSIONS = {'csv', 'txt', 'xls', 'xlsx', 'dat'}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 限制文件大小为10MB
+dim_red = DimentionReduction()
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -86,8 +88,16 @@ def upload_file():
                     logging.error(f"Error parsing XLS file {filename}: {str(e)}")
                     return jsonify({'error': f'Failed to parse XLS file: {str(e)}'}), 500
             elif file_extension == 'dat':
-                # 对于 .dat 文件，我们假设它是二进制数据，不进行直接解析
-                data_info = {'message': 'Binary file uploaded'}
+                # 对于 .dat 文件，假设它是二进制数据，这里需要根据实际情况解析
+                try:
+                    with open(file_path, 'rb') as f:
+                        bytes_data = f.read()
+                    data = np.frombuffer(bytes_data, dtype=np.float64)  # 根据实际情况调整dtype
+                except Exception as e:
+                    logging.error(f"Error parsing DAT file {filename}: {str(e)}")
+                    return jsonify({'error': f'Failed to parse DAT file: {str(e)}'}), 500
+            else:
+                raise ValueError("Unsupported file extension")
 
             logging.info(f"File {filename} uploaded successfully at {datetime.now()}")
             response_data = {
@@ -113,38 +123,55 @@ def uploaded_file(filename):
 @app.route('/api/generate-signal', methods=['POST'])
 def generate_signal():
     try:
-        # 直接从请求体中获取参数
-        data = request.json
+        data = request.get_json(silent=True)  # silent=True 避免抛出异常
 
-        # 验证并获取参数
-        signal_type = data.get('type', 'sine').lower()
-        frequency = float(data.get('frequency', 1.0))
-        amplitude = float(data.get('amplitude', 1.0))
-        phase = float(data.get('phase', 0.0))
-        duration = float(data.get('duration', 1.0))
-        duty_cycle = float(data.get('duty_cycle', 0.5)) if signal_type == 'square' else None
-        sampleRate = int(data.get('sampleRate', 500))
+        if not data:
+            raise ValueError("Request body is empty or not valid JSON.")
+
+        # 定义一个字典来映射信号类型到生成函数
+        signal_generators = {
+            'sine': generate_sine_wave,
+            'square': generate_square_wave,
+            'triangle': generate_triangle_wave,
+        }
+
+        # 检查所有必须的参数是否存在
+        required_params = ['type', 'frequency', 'amplitude', 'phase', 'duration', 'sampleRate']
+        signal_type = data['type'].lower()
+        if signal_type == 'square':
+            required_params.append('duty_cycle')
+
+        missing_params = [param for param in required_params if param not in data]
+        if missing_params:
+            raise ValueError(f"Missing parameters: {', '.join(missing_params)}")
+
+        # 从请求体中获取参数并且转换类型
+        frequency = float(data['frequency'])
+        amplitude = float(data['amplitude'])
+        phase = float(data['phase'])
+        duration = float(data['duration'])
+        sample_rate = int(data['sampleRate'])
+
+        duty_cycle = float(data.get('duty_cycle')) if signal_type == 'square' else None
 
         # 参数验证
-        if frequency <= 0 or amplitude <= 0 or duration <= 0 or sampleRate <= 0:
+        if frequency <= 0 or amplitude <= 0 or duration <= 0 or sample_rate <= 0:
             raise ValueError("Frequency, amplitude, duration, and sample rate must be positive numbers.")
         if signal_type == 'square' and (duty_cycle is None or duty_cycle < 0 or duty_cycle > 1):
             raise ValueError("Duty cycle must be between 0 and 1 for square waves.")
 
         # 根据信号类型生成信号
-        if signal_type == 'sine':
-            signal = generate_sine_wave(frequency, amplitude, phase, duration, sampleRate)
-        elif signal_type == 'square':
-            if duty_cycle is None:
-                raise ValueError("Duty cycle is required for square waves.")
-            signal = generate_square_wave(frequency, amplitude, duty_cycle, duration, sampleRate)
-        elif signal_type == 'triangle':
-            signal = generate_triangle_wave(frequency, amplitude, duration, sampleRate)
-        else:
+        generator_func = signal_generators.get(signal_type)
+        if not generator_func:
             raise ValueError("Unsupported signal type")
 
+        if signal_type == 'square':
+            signal = generator_func(frequency, amplitude, duty_cycle, duration, sample_rate)
+        else:
+            signal = generator_func(frequency, amplitude, phase, duration, sample_rate)
+
         logging.info(
-            f"Generated {signal_type} wave with parameters: freq={frequency}, amp={amplitude}, phase={phase}, duration={duration}, sampleRate={sampleRate}"
+            f"Generated {signal_type} wave with parameters: freq={frequency}, amp={amplitude}, phase={phase}, duration={duration}, sampleRate={sample_rate}"
         )
 
         return jsonify({
@@ -153,9 +180,12 @@ def generate_signal():
             'type': signal_type
         }), 200
 
+    except ValueError as ve:
+        logging.error(f"Client error generating signal: {str(ve)}")
+        return jsonify({'error': str(ve)}), 400
     except Exception as e:
-        logging.error(f"Error generating signal: {str(e)}")
-        return jsonify({'error': str(e)}), 400  # 返回 400 错误码以表示客户端错误
+        logging.error(f"Server error generating signal: {str(e)}", exc_info=True)  # 记录完整的堆栈跟踪
+        return jsonify({'error': "An unexpected error occurred."}), 500
 
 @app.route('/')
 def index():
@@ -173,49 +203,70 @@ def catch_all(path):
 
 @app.route('/api/process-signal', methods=['POST'])
 def process_signal():
-    if 'file' not in request.files:
-        logging.error('No file part')
-        return jsonify({'error': 'No file part'}), 400
+    try:
+        if request.is_json:
+            json_data = request.get_json()
+            logging.info(f"Received JSON data: {json.dumps(json_data, indent=2)}")
 
-    file = request.files['file']
-    sampleRate = float(request.form.get('sampleRate', 1000))  # 获取采样率，默认为1000
+            if not json_data or 'data' not in json_data or 'sample_rate' not in json_data or 'high_pass_cutoff' not in json_data:
+                return jsonify({'error': 'Invalid input'}), 400
 
-    if file.filename == '':
-        logging.error('No selected file')
-        return jsonify({'error': 'No selected file'}), 400
+            data = json_data['data']
+            sample_rate = float(json_data['sample_rate'])
+            high_pass_cutoff = float(json_data['high_pass_cutoff'])
 
-    if file and allowed_file(file.filename):
-        try:
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
+            # 将 data 转换为 NumPy 数组
+            data['x'] = np.array(data.get('x', []))
+            data['y'] = np.array(data.get('y', []))
 
-            # 加载数据到numpy数组中
-            data = load_data(file_path)
+            processor = SignalProcessor(data=data, sample_rate=sample_rate, high_pass_cutoff=high_pass_cutoff)
+            results = processor.process_all(high_pass_cutoff=high_pass_cutoff)
+            logging.info(f"Processed results: {json.dumps(results, indent=2)}")
 
-            # 使用 SignalProcessor 处理数据
-            processor = SignalProcessor(data, sampleRate=sampleRate)
-            results = processor.process_all()
-
-            # 如果有图表需要生成，则在此处处理
-            plot_url = generate_plot(results) if isinstance(results, dict) and 'x' in results and 'y' in results else None
-
-            # 返回结果
             response_data = {
                 'message': 'Signal processed successfully',
                 'results': results,
             }
 
-            if plot_url:
-                response_data['plot_url'] = plot_url
-
             return jsonify(response_data), 200
-        except Exception as e:
-            logging.error(f"Error processing signal: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-    else:
-        logging.error('File type not allowed')
-        return jsonify({'error': 'File type not allowed'}), 400
+
+        elif 'file' in request.files:
+            file = request.files['file']
+            sample_rate = float(request.form.get('sampleRate', 1000))
+            high_pass_cutoff = float(request.form.get('highPassCutoff', 100))
+
+            if file.filename == '':
+                logging.error('No selected file')
+                return jsonify({'error': 'No selected file'}), 400
+
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+
+                # 加载数据到 NumPy 数组中
+                data = load_data(file_path)
+
+                processor = SignalProcessor(data=data, sample_rate=sample_rate, high_pass_cutoff=high_pass_cutoff)
+                results = processor.process_all(high_pass_cutoff=high_pass_cutoff)
+
+                response_data = {
+                    'message': 'Signal processed successfully',
+                    'results': results,
+                }
+
+                return jsonify(response_data), 200
+
+            else:
+                logging.error('File type not allowed')
+                return jsonify({'error': 'File type not allowed'}), 400
+
+        else:
+            return jsonify({'error': 'Unsupported request format'}), 400
+
+    except Exception as e:
+        logging.error(f"Error processing signal: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 def load_data(file_path):
@@ -308,6 +359,61 @@ def plot():
         return "Plot not available", 400
     return render_template('plot.html', plot_url=plot_url)
 
+@app.route('/api/dimention-reduction', methods=['POST'])
+def dimention_reduction():
+    try:
+        data = request.get_json()
+
+        if not data:
+            raise ValueError("Request body is empty or not valid JSON.")
+
+        algorithm = data.get('algorithm')
+        dataset = data.get('dataset')
+        parameters = data.get('parameters', {})
+
+        result = dim_red.apply_dimentionality_reduction(algorithm, dataset, parameters)
+
+        return jsonify(result), 200
+
+    except ValueError as ve:
+        logging.error(f"ValueError: {str(ve)}")
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        logging.error(f"Exception: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/show-data', methods=['POST'])
+def show_data():
+    try:
+        data = request.get_json()
+
+        if not data:
+            raise ValueError("Request body is empty or not valid JSON.")
+
+        dataset = data.get('dataset')
+
+        X, y, feature_names, target_names = dim_red.load_dataset(dataset)
+
+        # Prepare the data to be sent back to the client
+        dataset_info = {
+            'feature_names': feature_names,
+            'target_names': target_names.tolist(),  # Convert NumPy array to list
+            'data': X[:10].tolist(),  # Send only the first 10 samples for brevity
+            'targets': y[:10].tolist()  # Convert NumPy array to list
+        }
+
+        return jsonify(dataset_info), 200
+
+    except ValueError as ve:
+        logging.error(f"ValueError: {str(ve)}")
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        logging.error(f"Exception: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+

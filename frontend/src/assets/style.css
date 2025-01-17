@@ -1,10 +1,14 @@
 /* src/assets/style.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
   font-family: Arial, sans-serif;
 }
 
 .file-upload {
-  max-width: 600px;
+  max-width: auto;
   margin: auto;
 }
 
